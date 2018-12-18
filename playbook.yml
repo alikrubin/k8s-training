@@ -1,0 +1,58 @@
+- name: install minikube
+  hosts: all
+  become: no
+  tasks:
+    - name: install ssh-server
+      become: yes
+      package:
+        name: openssh-server
+        update_cache: yes
+        state: present
+    - name: enable and start sshd
+      become: yes
+      systemd:
+        name: ssh
+        state: started
+        enabled: yes
+    - name: install docker, sysbench, mongo packages
+      become: yes
+      package: name={{item}} update_cache=no state=present
+      with_items:
+        - sysbench
+        - mongodb-clients
+        - telnet
+        - curl
+        - docker.io
+    - name: fix dns
+      become: yes
+      file:
+        src: /run/systemd/resolve/resolv.conf
+        dest: /etc/resolv.conf
+        state: link
+        force: yes
+    - name: install and start minicube
+      become: no
+      script: /home/vagrant/tutorial/install_minikube.sh > /tmp/install_minikube.log
+      args:
+          creates: /tmp/minikube_installed
+          executable: /bin/bash -x
+    - name: secure vagrant user password
+      become: yes
+      user:
+        name: vagrant
+        password: "$6$MquRdkwe4rmH0Q6W$vxsRTIakrDDMbzWibJ8qcvrz5W/.LDl5lpBn/kZPM719SGq4RN2UYHjwuSyadJCUkkGvYGeSxZCwEz2i8lp.j0"
+    # keep allow password login at the end, if downloads failed notify is not executed and not executed for further vagrant up --provision
+    - name: allow password login
+      become: yes
+      replace:
+        path: /etc/ssh/sshd_config
+        regexp: 'PasswordAuthentication no'
+        replace: 'PasswordAuthentication yes'
+        backup: no
+      notify: restart sshd
+  handlers:
+    - name: restart sshd
+      become: yes
+      service:
+        name: ssh
+        state: restarted
